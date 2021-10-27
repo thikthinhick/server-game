@@ -171,7 +171,9 @@ app.use(function (req, res, next) {
   next();
 });
 
-
+app.get('/', (req, res) => {
+  res.send('hello app heroku!')
+})
 app.get('/getRooms', (req, res) => {
   res.send(ListRoom)
 })
