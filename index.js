@@ -11,9 +11,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }))
 
 
-let ListRoom = [
-  { nameRoom: 'Phòng số 1', idRoom: '7fd8hfd', coin: 40000, Players: [], playing: false, isTurn: 0, password: 'chuong03022001' }
-]
+let ListRoom = []
 io.on("connection", function (socket) {
   console.log('Kết nối thành công vs ' + socket.id)
   socket.on('sendChat', (data) => {
@@ -40,20 +38,19 @@ io.on("connection", function (socket) {
           })
           //thiếu return
         }
-        // if (element.Players.length >= 2 && !element.playing) {
-        //   console.log('hello')
-        //   element.Players.forEach(item => {
-        //     io.to(item.socketId).emit('countdown')
-        //   })
-        // }
+        if (element.Players.length >= 2 && !element.playing) {
+          element.Players.forEach(item => {
+            io.to(item.socketId).emit('countdown')
+          })
+        }
       }
     })
   })
   socket.on('createRoom', (data) => {
-    const room = { nameRoom: data.nameroom, idRoom: 'fdfdfd', coin: data.coin, Players: [], playing: false, amount: data.amount, isTurn: 0, password: data.password }
+    const room = { nameRoom: data.nameroom, idRoom: getId(6), coin: data.coin, Players: [], playing: false, amount: data.amount, isTurn: 0, password: data.password }
     ListRoom.push(room)
     io.sockets.emit('updateRoom', getRoom(ListRoom))
-  })  
+  })
   socket.on('startGame', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -73,8 +70,10 @@ io.on("connection", function (socket) {
           if (!item.ready) start = false;
         })
         if (start) {
-          ListRoom[0].playing = true
+          ListRoom[0].playing = true;
+          io.sockets.emit('updateRoom', getRoom(ListRoom)) // update room
           element.Players.forEach((item, index) => {
+            item.ready = false;
             item.cards = list.slice(index * 13, (index + 1) * 13);
             item.totalCards = 13;
             io.to(item.socketId).emit('test', { listCards: list.slice(index * 13, (index + 1) * 13), isTurn: ListRoom[0].isTurn })
@@ -130,6 +129,7 @@ io.on("connection", function (socket) {
           if (!array[i].skip)
             break;
           i++
+          if (length === 1) break;
         }
         value.isTurn = i;
         io.sockets.emit('updateIsTurn', i);
@@ -155,7 +155,9 @@ io.on("connection", function (socket) {
   })
   socket.on('gameOver', (data) => {
     ListRoom.forEach(element => {
-      if(element.idRoom === data.idRoom) {
+      if (element.idRoom === data.idRoom) {
+        element.playing = false;
+        io.sockets.emit('updateRoom', getRoom(ListRoom))
         element.Players.forEach(value => {
           io.to(value.socketId).emit('gameOver', data.userName)
         })
@@ -163,15 +165,18 @@ io.on("connection", function (socket) {
     })
   })
   socket.on('logoutRoom', (data) => {
+    console.log('logout')
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
         element.Players = element.Players.filter(item => {
-          return item.socketId !== socket.id;
+          return item.userName !== data.userName
         })
+        element.Players.forEach(item => {
+          io.to(item.socketId).emit('removeUser', data.userName)
+        })
+        if (element.Players.length === 0) element.playing = false;
         io.sockets.emit('updateRoom', getRoom(ListRoom))
       }
-      io.sockets.emit('updatePlayer', element.Players)
-      
     })
   })
   socket.on("disconnect", function () {
@@ -179,23 +184,31 @@ io.on("connection", function (socket) {
       element.Players = element.Players.filter(item => {
         return item.socketId !== socket.id;
       })
+      if (element.Players.length === 0) element.playing = false;
     })
-    ListRoom = ListRoom.filter(item => {
-      return item.Players.length > 0
-    })
+    // ListRoom = ListRoom.filter(item => {
+    //   return item.Players.length > 0
+    // })
     io.sockets.emit('updateRoom', getRoom(ListRoom))
     console.log('Ngắt kết nối vs ' + socket.id)
   })
 });
-function getRoom (ListRoom) {
+function getRoom(ListRoom) {
   const array = []
   ListRoom.forEach(element => {
     const password = element.password === '' ? false : true
-    array.push({nameRoom: element.nameRoom, idRoom: element.idRoom, coin: element.coin, songuoi: element.Players.length, maxnguoi: element.amount, password: password})
+    array.push({ nameRoom: element.nameRoom, idRoom: element.idRoom, coin: element.coin, songuoi: element.Players.length, maxnguoi: element.amount, password: password, playing: element.playing})
   })
   return array;
 }
-
+function getId(length) {
+  var _sym = 'ZXCVBNMLKJHGFDSAQWERTYUIOP1234567890';
+  var id = '';
+  for (let i = 0; i < length; i++) {
+    id += _sym[parseInt(Math.random() * (_sym.length))];
+  }
+  return id;
+}
 
 app.use(function (req, res, next) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -219,7 +232,17 @@ app.post('/getPlayer', (req, res) => {
     }
   })
 })
-
+app.post('/sendPassword', (req, res) => {
+  ListRoom.forEach(element => {
+    if (element.idRoom === req.body.idRoom) {
+      if (element.password === req.body.password)
+        res.send(true)
+      else
+        res.send(false)
+      return;
+    }
+  })
+})
 
 app.post('/login', (req, res) => {
   const username = req.body.username;
