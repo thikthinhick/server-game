@@ -296,13 +296,13 @@ function getId(length) {
   return id;
 }
 
-app.use(function (req, res, next) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  next();
-});
+// app.use(function (req, res, next) {
+//   res.setHeader('Access-Control-Allow-Origin', '*');
+//   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+//   res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+//   res.setHeader('Access-Control-Allow-Credentials', true);
+//   next();
+// });
 
 app.get('/', (req, res) => {
   res.send('hello app heroku!')
@@ -332,16 +332,18 @@ app.post('/sendPassword', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
+  console.log(req.body)
   var sql = `select id_user, user_name, email, coin, url from user_game where email = '${email}' and password = '${password}'`
   conn.query(sql, (err, data) => {
-    if (data.length > 0) res.send({ login: true, ...data[0] })
+    if (data.length > 0) {
+      res.send({ login: true, ...data[0] })
+    }
     else res.send({ login: false })
 
   })
 })
 app.post('/signup', (req, res) => {
   const { email, password } = req.body;
-  console.log(req.body)
   const idUser = getId(10)
   const sql2 = `insert into user_game (id_user, email, password) values ('${idUser}', '${email}', '${password}')`
   const sql1 = `select * from user_game where email = '${email}'`
