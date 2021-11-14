@@ -1,6 +1,7 @@
 var express = require("express");
 var app = express();
 var server = require("http").Server(app);
+const fs = require('fs')
 var io = require("socket.io")(server);
 var conn = require('./ConnectMySql');
 var dotenv = require('dotenv')
@@ -9,9 +10,78 @@ const bodyParser = require('body-parser');
 dotenv.config();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }))
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const multer = require('multer');
+cloudinary.config({
+  cloud_name: 'clouduet',
+  api_key: '573147231385865',
+  api_secret: 'a6XHlMNsiDYiBJaeoY8bWcUW350'
+});
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'upload',
+    format: async (req, file) => 'jpg',
+    public_id: (req, file) => 'computed-filename-using-request',
+  },
+});
+const parser = multer({ storage: storage });
+app.use(function (req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  next();
+});
+app.post("/upload", parser.single('photo'), async (req, res) => {
+  try {
+    const sql = `update user_game set url = '${req.file.path}', user_name = '${req.body.userName}' where id_user = '${req.body.idUser}'`
 
-
+    conn.query(sql, (err, data) => {
+      if (err) throw err
+      res.send({ path: req.file.path })
+    })
+  } catch (error) {
+    res.status(500).send("Error");
+  }
+});
 let ListRoom = []
+app.post('/getRanking', (req, res) => {
+  var sql = `select user_name, url, coin from user_game ORDER by coin DESC limit 5;`
+
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+    res.send(data)
+  })
+})
+app.post('/getFriend', (req, res) => {
+  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select if(id_user2 = '${req.body.idUser}',id_user1, id_user2) as id_user from friend where id_user1 = '${req.body.idUser}' || id_user2 = '${req.body.idUser}');`
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+    res.send(data)
+  })
+})
+app.post('/addUser', (req, res) => {
+  var sql = `insert into friend (id_user1, id_user2) values ('${req.body.id_user1}', '${req.body.id_user2}')`
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+  })
+})
+app.post('/getSend', (req, res) => {
+  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_send from invite where id_user_receive = '${req.body.idUser}')`
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+    res.send(data)
+  })
+})
+app.post('/getReceive', (req, res) => {
+  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_receive from invite where id_user_send = '${req.body.idUser}')`
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+    res.send(data)
+  })
+})
 io.on("connection", function (socket) {
   console.log('Kết nối thành công vs ' + socket.id)
   socket.on('sendChat', (data) => {
@@ -30,7 +100,7 @@ io.on("connection", function (socket) {
         else {
           let joinViewer = false;
           if (element.playing) joinViewer = true;
-          const user = { socketId: socket.id, userName: data.userName, ready: false, Viewer: joinViewer, skip: false, cards: null, totalCards: null, dangdanh: null }
+          const user = { socketId: socket.id, userName: data.userName, coin: data.coin, url: data.url, idUser: data.idUser, ready: false, Viewer: joinViewer, skip: false, cards: null, totalCards: null, dangdanh: null }
           element.Players.push(user)
           socket.local.emit('joinSuccess', ListRoom)
           element.Players.forEach(item => {
@@ -38,11 +108,11 @@ io.on("connection", function (socket) {
           })
           //thiếu return
         }
-        if (element.Players.length >= 2 && !element.playing) {
-          element.Players.forEach(item => {
-            io.to(item.socketId).emit('countdown')
-          })
-        }
+        // if (element.Players.length >= 2 && !element.playing) {
+        //   element.Players.forEach(item => {
+        //     io.to(item.socketId).emit('countdown')
+        //   })
+        // }
       }
     })
   })
@@ -102,7 +172,7 @@ io.on("connection", function (socket) {
         value.isTurn = i;
         io.sockets.emit('updateIsTurn', i)
         value.Players.forEach(element => {
-          if (element.userName === data.userName) element.totalCards -= data.listCard.length;
+          if (element.idUser === data.idUser) element.totalCards -= data.listCard.length;
         })
         value.Players.forEach(element => {
           io.to(element.socketId).emit('sendCard', data)
@@ -115,7 +185,7 @@ io.on("connection", function (socket) {
       if (value.idRoom === data.idRoom) {
         let array = []
         value.Players.forEach((element) => {
-          if (element.userName === data.userName)
+          if (element.idUser === data.idUser)
             element.skip = true;
         })
         value.Players.forEach(element => {
@@ -139,7 +209,7 @@ io.on("connection", function (socket) {
             count++;
         })
         value.Players.forEach(element => {
-          io.to(element.socketId).emit('skip', data.userName)
+          io.to(element.socketId).emit('skip', data.idUser)
         })
         if (count + 1 === array.length) {
           value.Players.forEach(element => {
@@ -159,21 +229,37 @@ io.on("connection", function (socket) {
         element.playing = false;
         io.sockets.emit('updateRoom', getRoom(ListRoom))
         element.Players.forEach(value => {
-          io.to(value.socketId).emit('gameOver', data.userName)
+          io.to(value.socketId).emit('gameOver', data.idUser)
         })
       }
     })
   })
   socket.on('logoutRoom', (data) => {
-    console.log('logout')
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
         element.Players = element.Players.filter(item => {
-          return item.userName !== data.userName
+          return item.idUser !== data.idUser
         })
         element.Players.forEach(item => {
-          io.to(item.socketId).emit('removeUser', data.userName)
+          io.to(item.socketId).emit('removeUser', data.idUser)
         })
+        if (element.playing) {
+          let x = 0;
+          var idUser = ''
+          element.Players.forEach(item => {
+            if (!item.Viewer) {
+              x++;
+              idUser = item.idUser;
+            }
+          })
+          if (x <= 1) {
+            element.Players.forEach(item => {
+              io.to(item.socketId).emit('gameOver', idUser)
+            })
+            element.playing = false;
+          }
+
+        }
         if (element.Players.length === 0) element.playing = false;
         io.sockets.emit('updateRoom', getRoom(ListRoom))
       }
@@ -197,7 +283,7 @@ function getRoom(ListRoom) {
   const array = []
   ListRoom.forEach(element => {
     const password = element.password === '' ? false : true
-    array.push({ nameRoom: element.nameRoom, idRoom: element.idRoom, coin: element.coin, songuoi: element.Players.length, maxnguoi: element.amount, password: password, playing: element.playing})
+    array.push({ nameRoom: element.nameRoom, idRoom: element.idRoom, coin: element.coin, songuoi: element.Players.length, maxnguoi: element.amount, password: password, playing: element.playing })
   })
   return array;
 }
@@ -245,28 +331,29 @@ app.post('/sendPassword', (req, res) => {
 })
 
 app.post('/login', (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
-  const accessToken = jwt.sign(req.body, 'levanchuong', {
-    expiresIn: '30m'
+  const { email, password } = req.body;
+  var sql = `select id_user, user_name, email, coin, url from user_game where email = '${email}' and password = '${password}'`
+  conn.query(sql, (err, data) => {
+    if (data.length > 0) res.send({ login: true, ...data[0] })
+    else res.send({ login: false })
+
   })
-  res.json({ accessToken })
 })
-app.get('/', authenToken, (req, res) => {
-  conn.query('select * from user', (err, data) => {
+app.post('/signup', (req, res) => {
+  const { email, password } = req.body;
+  console.log(req.body)
+  const idUser = getId(10)
+  const sql2 = `insert into user_game (id_user, email, password) values ('${idUser}', '${email}', '${password}')`
+  const sql1 = `select * from user_game where email = '${email}'`
+  conn.query(sql1, (err, data1) => {
     if (err) throw err
-    res.send(data)
+    if (data1.length > 0) res.send({ signup: false })
+    else {
+      conn.query(sql2, (err, data2) => {
+        if (err) throw err
+        res.send({ signup: true, idUser: idUser })
+      })
+    }
   })
 })
-function authenToken(req, res, next) {
-  const authorizationHeader = req.headers['authorization'];
-  const token = authorizationHeader.split(' ')[1];
-  if (!token) res.sendStatus(401)
-  jwt.verify(token, 'levanchuong', (err, data) => {
-    console.log(err, data)
-    if (err) res.send('error')
-    else
-      next()
-  })
-}
-server.listen(process.env.PORT);
+server.listen(process.env.PORT || 3000);
