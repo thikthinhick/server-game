@@ -13,6 +13,7 @@ app.use(bodyParser.urlencoded({ extended: false }))
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
+
 cloudinary.config({
   cloud_name: 'clouduet',
   api_key: '573147231385865',
@@ -34,22 +35,23 @@ app.use(function (req, res, next) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   next();
 });
+
 app.post("/upload", parser.single('photo'), async (req, res) => {
   try {
     const sql = `update user_game set url = '${req.file.path}', user_name = '${req.body.userName}' where id_user = '${req.body.idUser}'`
-
+    console.log(sql)
     conn.query(sql, (err, data) => {
       if (err) throw err
       res.send({ path: req.file.path })
-    })
+    })  
   } catch (error) {
     res.status(500).send("Error");
   }
 });
 let ListRoom = []
+var users = [];
 app.post('/getRanking', (req, res) => {
   var sql = `select user_name, url, coin from user_game ORDER by coin DESC limit 5;`
-
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
@@ -62,10 +64,32 @@ app.post('/getFriend', (req, res) => {
     res.send(data)
   })
 })
-app.post('/addUser', (req, res) => {
-  var sql = `insert into friend (id_user1, id_user2) values ('${req.body.id_user1}', '${req.body.id_user2}')`
+app.post('/acceptFriend', (req, res) => {
+ 
+  var sql1 = `insert into friend (id_user1, id_user2) values ('${req.body.id_user_send}', '${req.body.id_user_receive}')`
+  var sql2 = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
+  
+  conn.query(sql1, (err, data1) => {
+    if(err) throw err
+    conn.query(sql2, (err, data2) => {
+      if(err) throw err
+    })
+  })
+})
+app.post('/deleteInvite', (req, res) => {
+  var sql = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
   conn.query(sql, (err, data) => {
-    if (err) throw err
+    if(err) throw err
+  })
+})
+app.post('/addRemoveUser', (req, res) => {
+  var sql;
+  if(req.body.add)
+    sql = `insert into invite (id_user_send, id_user_receive) values ('${req.body.id_user1}', '${req.body.id_user2}')`;
+  else
+    sql = `delete from friend where (id_user1 = '${req.body.id_user1}' and id_user2 =  '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2 = '${req.body.id_user1}')`
+  conn.query(sql, (err, data) => {
+    res.sendStatus(200)
   })
 })
 app.post('/getSend', (req, res) => {
@@ -73,6 +97,14 @@ app.post('/getSend', (req, res) => {
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
+  })
+})
+app.post('/getProfile', (req, res) => {
+  var sql = `select count(*) as soluong from friend where (id_user1 = '${req.body.id_user1}' and id_user2 = '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2  = '${req.body.id_user1}')`
+  conn.query(sql, (err, data) => {
+    console.log(data)
+    if(data[0].soluong === 0) res.send(true)
+    else res.send(false)
   })
 })
 app.post('/getReceive', (req, res) => {
@@ -84,14 +116,19 @@ app.post('/getReceive', (req, res) => {
 })
 io.on("connection", function (socket) {
   console.log('Kết nối thành công vs ' + socket.id)
-  socket.on('sendChat', (data) => {
-    io.emit('sendChat', data)
+  socket.on('addUserId', data => {
+    socket.idUser = data
   })
-  // socket.on('Reconnect', (data) => {
-  //   ListRoom[0].Players.forEach(value => {
-  //   })
-  //   socket.join(ListRoom[0].idRoom);
-  // })
+  socket.on('sendChat', (data) => {
+    ListRoom.forEach(element => {
+      if(element.idRoom === data.idRoom) {
+        console.log(data.idRoom)
+        element.Players.forEach(item => {
+          io.to(item.socketId).emit('sendChat', data)
+        })
+      }
+    })
+  })
   socket.on('joinRoom', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -108,11 +145,6 @@ io.on("connection", function (socket) {
           })
           //thiếu return
         }
-        // if (element.Players.length >= 2 && !element.playing) {
-        //   element.Players.forEach(item => {
-        //     io.to(item.socketId).emit('countdown')
-        //   })
-        // }
       }
     })
   })
@@ -165,13 +197,13 @@ io.on("connection", function (socket) {
         const length = array.length;
         while (true) {
           if (i === length) i = 0;
-          if (!array[i].skip)
+          if (!array[i].skip) 
             break;
           i++
         }
         value.isTurn = i;
-        io.sockets.emit('updateIsTurn', i)
         value.Players.forEach(element => {
+          io.to(element.socketId).emit('updateIsTurn', i)
           if (element.idUser === data.idUser) element.totalCards -= data.listCard.length;
         })
         value.Players.forEach(element => {
@@ -202,7 +234,9 @@ io.on("connection", function (socket) {
           if (length === 1) break;
         }
         value.isTurn = i;
-        io.sockets.emit('updateIsTurn', i);
+        value.Players.forEach(element => {
+          io.to(element.socketId).emit('updateIsTurn', i)
+        })
         let count = 0;
         array.forEach(element => {
           if (element.skip)
@@ -265,6 +299,14 @@ io.on("connection", function (socket) {
       }
     })
   })
+  socket.on('sendInvite', (data) => {
+    for(key in io.sockets.sockets) {
+      if(io.sockets.sockets[key].idUser === data.idUser){
+        console.log(key + ":" + data.idUser)
+        io.to(key).emit('sendInvite', data)
+      }
+    }
+  })
   socket.on("disconnect", function () {
     ListRoom.forEach(element => {
       element.Players = element.Players.filter(item => {
@@ -296,15 +338,8 @@ function getId(length) {
   return id;
 }
 
-// app.use(function (req, res, next) {
-//   res.setHeader('Access-Control-Allow-Origin', '*');
-//   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-//   res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-//   res.setHeader('Access-Control-Allow-Credentials', true);
-//   next();
-// });
-
 app.get('/', (req, res) => {
+  console.log('hello')
   res.send('hello app heroku!')
 })
 app.get('/getRooms', (req, res) => {
@@ -332,7 +367,6 @@ app.post('/sendPassword', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
-  console.log(req.body)
   var sql = `select id_user, user_name, email, coin, url from user_game where email = '${email}' and password = '${password}'`
   conn.query(sql, (err, data) => {
     if (data.length > 0) {
@@ -345,7 +379,8 @@ app.post('/login', (req, res) => {
 app.post('/signup', (req, res) => {
   const { email, password } = req.body;
   const idUser = getId(10)
-  const sql2 = `insert into user_game (id_user, email, password) values ('${idUser}', '${email}', '${password}')`
+  const userName = getId(8)
+  const sql2 = `insert into user_game (id_user, email, password, user_name) values ('${idUser}', '${email}', '${password}', '${userName}  ')`
   const sql1 = `select * from user_game where email = '${email}'`
   conn.query(sql1, (err, data1) => {
     if (err) throw err
@@ -353,7 +388,7 @@ app.post('/signup', (req, res) => {
     else {
       conn.query(sql2, (err, data2) => {
         if (err) throw err
-        res.send({ signup: true, idUser: idUser })
+        res.send({ signup: true, idUser: idUser, userName: userName})
       })
     }
   })
