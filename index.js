@@ -43,7 +43,7 @@ app.post("/upload", parser.single('photo'), async (req, res) => {
     conn.query(sql, (err, data) => {
       if (err) throw err
       res.send({ path: req.file.path })
-    })  
+    })
   } catch (error) {
     res.status(500).send("Error");
   }
@@ -65,26 +65,26 @@ app.post('/getFriend', (req, res) => {
   })
 })
 app.post('/acceptFriend', (req, res) => {
- 
   var sql1 = `insert into friend (id_user1, id_user2) values ('${req.body.id_user_send}', '${req.body.id_user_receive}')`
   var sql2 = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
-  
   conn.query(sql1, (err, data1) => {
-    if(err) throw err
+    if (err) throw err
     conn.query(sql2, (err, data2) => {
-      if(err) throw err
+      if (err) throw err
+      res.sendStatus(200)
     })
   })
 })
 app.post('/deleteInvite', (req, res) => {
   var sql = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
   conn.query(sql, (err, data) => {
-    if(err) throw err
+    if (err) throw err
+    res.sendStatus(200)
   })
 })
 app.post('/addRemoveUser', (req, res) => {
   var sql;
-  if(req.body.add)
+  if (req.body.add)
     sql = `insert into invite (id_user_send, id_user_receive) values ('${req.body.id_user1}', '${req.body.id_user2}')`;
   else
     sql = `delete from friend where (id_user1 = '${req.body.id_user1}' and id_user2 =  '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2 = '${req.body.id_user1}')`
@@ -102,8 +102,7 @@ app.post('/getSend', (req, res) => {
 app.post('/getProfile', (req, res) => {
   var sql = `select count(*) as soluong from friend where (id_user1 = '${req.body.id_user1}' and id_user2 = '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2  = '${req.body.id_user1}')`
   conn.query(sql, (err, data) => {
-    console.log(data)
-    if(data[0].soluong === 0) res.send(true)
+    if (data[0].soluong === 0) res.send(true)
     else res.send(false)
   })
 })
@@ -121,8 +120,7 @@ io.on("connection", function (socket) {
   })
   socket.on('sendChat', (data) => {
     ListRoom.forEach(element => {
-      if(element.idRoom === data.idRoom) {
-        console.log(data.idRoom)
+      if (element.idRoom === data.idRoom) {
         element.Players.forEach(item => {
           io.to(item.socketId).emit('sendChat', data)
         })
@@ -139,8 +137,9 @@ io.on("connection", function (socket) {
           if (element.playing) joinViewer = true;
           const user = { socketId: socket.id, userName: data.userName, coin: data.coin, url: data.url, idUser: data.idUser, ready: false, Viewer: joinViewer, skip: false, cards: null, totalCards: null, dangdanh: null }
           element.Players.push(user)
-          socket.local.emit('joinSuccess', ListRoom)
+          socket.local.emit('joinSuccess', { idRoom: element.idRoom, coin: element.coin })
           element.Players.forEach(item => {
+            if(item.socketId !== socket.id)
             io.to(item.socketId).emit('updateRoomWhenJoin', user)
           })
           //thiếu return
@@ -172,13 +171,20 @@ io.on("connection", function (socket) {
           if (!item.ready) start = false;
         })
         if (start) {
-          ListRoom[0].playing = true;
+          element.Players.forEach((item) => {
+            conn.query(`update user_game set coin = coin - ${element.coin} where id_user = '${item.idUser}'`, (err, data) => {
+              if(err) throw err
+            })
+            item.coin -= element.coin
+          })
+          element.tongtiencuoc = element.coin * element.Players.length;
+          element.playing = true;
           io.sockets.emit('updateRoom', getRoom(ListRoom)) // update room
           element.Players.forEach((item, index) => {
             item.ready = false;
             item.cards = list.slice(index * 13, (index + 1) * 13);
             item.totalCards = 13;
-            io.to(item.socketId).emit('test', { listCards: list.slice(index * 13, (index + 1) * 13), isTurn: ListRoom[0].isTurn })
+            io.to(item.socketId).emit('test', { listCards: list.slice(index * 13, (index + 1) * 13), isTurn: element.isTurn })
           })
         }
         return;
@@ -197,7 +203,7 @@ io.on("connection", function (socket) {
         const length = array.length;
         while (true) {
           if (i === length) i = 0;
-          if (!array[i].skip) 
+          if (!array[i].skip)
             break;
           i++
         }
@@ -258,12 +264,16 @@ io.on("connection", function (socket) {
     })
   })
   socket.on('gameOver', (data) => {
+
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
         element.playing = false;
         io.sockets.emit('updateRoom', getRoom(ListRoom))
+        // conn.query(`update user_game set coin = coin + ${element.tongtiencuoc} where id_user = '${data.idUser}'`, (err, data) => {
+        //   if(err) throw err
+        // })
         element.Players.forEach(value => {
-          io.to(value.socketId).emit('gameOver', data.idUser)
+          io.to(value.socketId).emit('gameOver',{idUser: data.idUser, tongtiencuoc: element.tongtiencuoc} )
         })
       }
     })
@@ -288,11 +298,14 @@ io.on("connection", function (socket) {
           })
           if (x <= 1) {
             element.Players.forEach(item => {
-              io.to(item.socketId).emit('gameOver', idUser)
+              io.to(item.socketId).emit('gameOver', {idUser: idUser, tongtiencuoc: element.tongtiencuoc})
+              conn.query(`update user_game set coin = coin + ${element.tongtiencuoc} where id_user = '${idUser}'`, (err, data) => {
+                if(err) throw err
+              })
+              item.coin += element.tongtiencuoc
             })
             element.playing = false;
           }
-
         }
         if (element.Players.length === 0) element.playing = false;
         io.sockets.emit('updateRoom', getRoom(ListRoom))
@@ -300,9 +313,8 @@ io.on("connection", function (socket) {
     })
   })
   socket.on('sendInvite', (data) => {
-    for(key in io.sockets.sockets) {
-      if(io.sockets.sockets[key].idUser === data.idUser){
-        console.log(key + ":" + data.idUser)
+    for (key in io.sockets.sockets) {
+      if (io.sockets.sockets[key].idUser === data.idUser) {
         io.to(key).emit('sendInvite', data)
       }
     }
@@ -339,7 +351,6 @@ function getId(length) {
 }
 
 app.get('/', (req, res) => {
-  console.log('hello')
   res.send('hello app heroku!')
 })
 app.get('/getRooms', (req, res) => {
@@ -376,7 +387,17 @@ app.post('/login', (req, res) => {
 
   })
 })
+app.post('/sendEdit', (req, res) => {
+  const {idUser, url, userName} = req.body;
+  console.log(req.body)
+  var sql = `update user_game set url = ${url}, user_name = '${userName}' where id_user = '${idUser}'`
+  console.log(sql)
+  conn.query(sql, (err, data) => {
+    res.send(true)
+  })
+})
 app.post('/signup', (req, res) => {
+  
   const { email, password } = req.body;
   const idUser = getId(10)
   const userName = getId(8)
@@ -388,7 +409,7 @@ app.post('/signup', (req, res) => {
     else {
       conn.query(sql2, (err, data2) => {
         if (err) throw err
-        res.send({ signup: true, idUser: idUser, userName: userName})
+        res.send({ signup: true, idUser: idUser, userName: userName })
       })
     }
   })
