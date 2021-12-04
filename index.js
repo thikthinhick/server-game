@@ -139,8 +139,8 @@ io.on("connection", function (socket) {
           element.Players.push(user)
           socket.local.emit('joinSuccess', { idRoom: element.idRoom, coin: element.coin })
           element.Players.forEach(item => {
-            if(item.socketId !== socket.id)
-            io.to(item.socketId).emit('updateRoomWhenJoin', user)
+            if (item.socketId !== socket.id)
+              io.to(item.socketId).emit('updateRoomWhenJoin', user)
           })
           //thiếu return
         }
@@ -173,7 +173,7 @@ io.on("connection", function (socket) {
         if (start) {
           element.Players.forEach((item) => {
             conn.query(`update user_game set coin = coin - ${element.coin} where id_user = '${item.idUser}'`, (err, data) => {
-              if(err) throw err
+              if (err) throw err
             })
             item.coin -= element.coin
           })
@@ -273,7 +273,7 @@ io.on("connection", function (socket) {
         //   if(err) throw err
         // })
         element.Players.forEach(value => {
-          io.to(value.socketId).emit('gameOver',{idUser: data.idUser, tongtiencuoc: element.tongtiencuoc} )
+          io.to(value.socketId).emit('gameOver', { idUser: data.idUser, tongtiencuoc: element.tongtiencuoc })
         })
       }
     })
@@ -298,9 +298,9 @@ io.on("connection", function (socket) {
           })
           if (x <= 1) {
             element.Players.forEach(item => {
-              io.to(item.socketId).emit('gameOver', {idUser: idUser, tongtiencuoc: element.tongtiencuoc})
+              io.to(item.socketId).emit('gameOver', { idUser: idUser, tongtiencuoc: element.tongtiencuoc })
               conn.query(`update user_game set coin = coin + ${element.tongtiencuoc} where id_user = '${idUser}'`, (err, data) => {
-                if(err) throw err
+                if (err) throw err
               })
               item.coin += element.tongtiencuoc
             })
@@ -320,16 +320,45 @@ io.on("connection", function (socket) {
     }
   })
   socket.on("disconnect", function () {
-    ListRoom.forEach(element => {
-      element.Players = element.Players.filter(item => {
-        return item.socketId !== socket.id;
+    ListRoom.forEach((element, i) => {
+      let user;
+      element.Players.forEach(item => {
+        if (item.socketId === socket.id) {
+          user = item;
+        }
       })
-      if (element.Players.length === 0) element.playing = false;
+      if (user) {
+        element.Players = element.Players.filter(item => {
+          return item.socketId !== socket.id;
+        })
+        element.Players.forEach(item => {
+          console.log(item.socketId)
+          io.to(item.socketId).emit('removeUser', user.idUser)
+        })
+        if (element.playing) {
+          let x = 0;
+          var idUser = ''
+          element.Players.forEach(item => {
+            if (!item.Viewer) {
+              x++;
+              idUser = item.idUser;
+            }
+          })
+          if (x <= 1) {
+            element.Players.forEach(item => {
+              io.to(item.socketId).emit('gameOver', { idUser: idUser, tongtiencuoc: element.tongtiencuoc })
+              conn.query(`update user_game set coin = coin + ${element.tongtiencuoc} where id_user = '${idUser}'`, (err, data) => {
+                if (err) throw err
+              })
+              item.coin += element.tongtiencuoc
+            })
+            element.playing = false;
+          }
+        }
+        if (element.Players.length === 0) element.playing = false;
+        io.sockets.emit('updateRoom', getRoom(ListRoom))
+      }
     })
-    // ListRoom = ListRoom.filter(item => {
-    //   return item.Players.length > 0
-    // })
-    io.sockets.emit('updateRoom', getRoom(ListRoom))
     console.log('Ngắt kết nối vs ' + socket.id)
   })
 });
@@ -388,7 +417,7 @@ app.post('/login', (req, res) => {
   })
 })
 app.post('/sendEdit', (req, res) => {
-  const {idUser, url, userName} = req.body;
+  const { idUser, url, userName } = req.body;
   console.log(req.body)
   var sql = `update user_game set url = ${url}, user_name = '${userName}' where id_user = '${idUser}'`
   console.log(sql)
@@ -397,7 +426,7 @@ app.post('/sendEdit', (req, res) => {
   })
 })
 app.post('/signup', (req, res) => {
-  
+
   const { email, password } = req.body;
   const idUser = getId(10)
   const userName = getId(8)
