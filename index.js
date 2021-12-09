@@ -39,7 +39,7 @@ app.use(function (req, res, next) {
 app.post("/upload", parser.single('photo'), async (req, res) => {
   try {
     const sql = `update user_game set url = '${req.file.path}', user_name = '${req.body.userName}' where id_user = '${req.body.idUser}'`
-    console.log(sql)
+
     conn.query(sql, (err, data) => {
       if (err) throw err
       res.send({ path: req.file.path })
@@ -113,10 +113,29 @@ app.post('/getReceive', (req, res) => {
     res.send(data)
   })
 })
+app.post('/getMessages', (req, res) => {
+  var sql = `select id_user_send, id_user_receive, content from chat where (id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}') or (id_user_receive = '${req.body.id_user_send}' and id_user_send = '${req.body.id_user_receive}')`;
+  conn.query(sql, (err, data) => {
+    if (err) throw err
+    res.send(data)
+  })
+})
 io.on("connection", function (socket) {
   console.log('Kết nối thành công vs ' + socket.id)
   socket.on('addUserId', data => {
     socket.idUser = data
+  })
+  socket.on('sendMessage', (data) => {
+    var sql = `insert into chat (id_user_send, id_user_receive, content, date_send) values ('${data.id_user_send}', '${data.id_user_receive}', '${data.content}', now())`;
+    
+    conn.query(sql, (err, data1) => {
+      if (err) throw err
+      for (key in io.sockets.sockets) {
+        if (io.sockets.sockets[key].idUser === data.id_user_receive) {
+          io.to(key).emit('sendMessage', data)
+        }
+      }
+    })
   })
   socket.on('sendChat', (data) => {
     ListRoom.forEach(element => {
@@ -394,6 +413,7 @@ app.post('/getPlayer', (req, res) => {
   })
 })
 app.post('/sendPassword', (req, res) => {
+  console.log(req.body)
   ListRoom.forEach(element => {
     if (element.idRoom === req.body.idRoom) {
       if (element.password === req.body.password)
