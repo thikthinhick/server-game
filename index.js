@@ -49,41 +49,46 @@ app.post("/upload", parser.single('photo'), async (req, res) => {
   }
 });
 let ListRoom = []
-var users = [];
 app.post('/getRanking', (req, res) => {
-  var sql = `select user_name, url, coin from user_game ORDER by coin DESC limit 5;`
+  let sql = `select user_name, url, coin from user_game ORDER by coin DESC limit 5;`
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
   })
-})
+}) // trả về bảng xếp hạng
 app.post('/getFriend', (req, res) => {
-  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select if(id_user2 = '${req.body.idUser}',id_user1, id_user2) as id_user from friend where id_user1 = '${req.body.idUser}' || id_user2 = '${req.body.idUser}');`
+  let sql = `select user_name, coin, url, user_game.id_user, total_messages, id_friend from friend_member inner join user_game on friend_member.id_user = user_game.id_user where user_game.id_user in (select if(id_user2 = '${req.body.idUser}',id_user1, id_user2) as id_user from friend where id_user1 = '${req.body.idUser}' || id_user2 = '${req.body.idUser}');`
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
+  })
+}) // trả về bạn bè
+app.post('/resetMessage', (req, res) => {
+  let sql = `update friend_member set total_messages = 0 where id_user = '${req.body.id_user}' and id_friend = '${req.body.id_friend}'`;
+  conn.query(sql, (err, data) => {
+    res.send(true)
   })
 })
 app.post('/acceptFriend', (req, res) => {
-  var sql1 = `insert into friend (id_user1, id_user2) values ('${req.body.id_user_send}', '${req.body.id_user_receive}')`
-  var sql2 = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
+  let sql1 = `insert into friend (id_user1, id_user2) values ('${req.body.id_user_send}', '${req.body.id_user_receive}')`
+  let sql3 = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
   conn.query(sql1, (err, data1) => {
     if (err) throw err
-    conn.query(sql2, (err, data2) => {
+    conn.query(sql3, (err, data3) => {
       if (err) throw err
       res.sendStatus(200)
     })
   })
 })
 app.post('/deleteInvite', (req, res) => {
-  var sql = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
+  let sql = `delete from invite where id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}'`
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.sendStatus(200)
   })
 })
 app.post('/addRemoveUser', (req, res) => {
-  var sql;
+  let sql;
   if (req.body.add)
     sql = `insert into invite (id_user_send, id_user_receive) values ('${req.body.id_user1}', '${req.body.id_user2}')`;
   else
@@ -93,28 +98,30 @@ app.post('/addRemoveUser', (req, res) => {
   })
 })
 app.post('/getSend', (req, res) => {
-  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_send from invite where id_user_receive = '${req.body.idUser}')`
+
+    let sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_send from invite where id_user_receive = '${req.body.idUser}')`
+
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
   })
 })
 app.post('/getProfile', (req, res) => {
-  var sql = `select count(*) as soluong from friend where (id_user1 = '${req.body.id_user1}' and id_user2 = '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2  = '${req.body.id_user1}')`
+  let sql = `select count(*) as soluong from friend where (id_user1 = '${req.body.id_user1}' and id_user2 = '${req.body.id_user2}') or (id_user1 = '${req.body.id_user2}' and id_user2  = '${req.body.id_user1}')`
   conn.query(sql, (err, data) => {
     if (data[0].soluong === 0) res.send(true)
     else res.send(false)
   })
 })
 app.post('/getReceive', (req, res) => {
-  var sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_receive from invite where id_user_send = '${req.body.idUser}')`
+  let sql = `select user_name, coin, url, id_user from user_game where id_user in (select id_user_receive from invite where id_user_send = '${req.body.idUser}')`
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
   })
 })
 app.post('/getMessages', (req, res) => {
-  var sql = `select id_user_send, id_user_receive, content from chat where (id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}') or (id_user_receive = '${req.body.id_user_send}' and id_user_send = '${req.body.id_user_receive}')`;
+  let sql = `select id_user_send, id_user_receive, content from chat where (id_user_send = '${req.body.id_user_send}' and id_user_receive = '${req.body.id_user_receive}') or (id_user_receive = '${req.body.id_user_send}' and id_user_send = '${req.body.id_user_receive}')`;
   conn.query(sql, (err, data) => {
     if (err) throw err
     res.send(data)
@@ -126,17 +133,17 @@ io.on("connection", function (socket) {
     socket.idUser = data
   })
   socket.on('sendMessage', (data) => {
-    var sql = `insert into chat (id_user_send, id_user_receive, content, date_send) values ('${data.id_user_send}', '${data.id_user_receive}', '${data.content}', now())`;
-    
+    let sql = `insert into chat (id_user_send, id_user_receive, content, date_send) values ('${data.id_user_send}', '${data.id_user_receive}', '${data.content}', now())`;
     conn.query(sql, (err, data1) => {
       if (err) throw err
       for (key in io.sockets.sockets) {
         if (io.sockets.sockets[key].idUser === data.id_user_receive) {
           io.to(key).emit('sendMessage', data)
+          io.to(key).emit('tangtinnhan', {id_user: data.id_user_send})
         }
       }
     })
-  })
+  })// chat riêng tư
   socket.on('sendChat', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -145,7 +152,7 @@ io.on("connection", function (socket) {
         })
       }
     })
-  })
+  }) // chat trong room
   socket.on('joinRoom', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -165,12 +172,12 @@ io.on("connection", function (socket) {
         }
       }
     })
-  })
+  }) // join vào phòng
   socket.on('createRoom', (data) => {
     const room = { nameRoom: data.nameroom, idRoom: getId(6), coin: data.coin, Players: [], playing: false, amount: data.amount, isTurn: 0, password: data.password }
     ListRoom.push(room)
     io.sockets.emit('updateRoom', getRoom(ListRoom))
-  })
+  }) // tạo phòng
   socket.on('startGame', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -209,7 +216,7 @@ io.on("connection", function (socket) {
         return;
       }
     })
-  })
+  }) // start game
   socket.on('sendCard', (data) => {
     ListRoom.forEach(value => {
       if (value.idRoom === data.idRoom) {
@@ -236,7 +243,7 @@ io.on("connection", function (socket) {
         })
       }
     })
-  })
+  }) // gửi các thẻ bài lên server, rùi server trả về cho các người chơi trong phòng
   socket.on('skip', data => {
     ListRoom.forEach(value => {
       if (value.idRoom === data.idRoom) {
@@ -281,7 +288,7 @@ io.on("connection", function (socket) {
         return;
       }
     })
-  })
+  }) // bỏ qua khi không chặn được bài đối thủ
   socket.on('gameOver', (data) => {
 
     ListRoom.forEach(element => {
@@ -297,6 +304,7 @@ io.on("connection", function (socket) {
       }
     })
   })
+  // kết thúc game
   socket.on('logoutRoom', (data) => {
     ListRoom.forEach(element => {
       if (element.idRoom === data.idRoom) {
@@ -330,7 +338,7 @@ io.on("connection", function (socket) {
         io.sockets.emit('updateRoom', getRoom(ListRoom))
       }
     })
-  })
+  }) // rời khỏi phòng
   socket.on('sendInvite', (data) => {
     for (key in io.sockets.sockets) {
       if (io.sockets.sockets[key].idUser === data.idUser) {
@@ -338,6 +346,8 @@ io.on("connection", function (socket) {
       }
     }
   })
+
+  //gửi lời mời chơi
   socket.on("disconnect", function () {
     ListRoom.forEach((element, i) => {
       let user;
@@ -381,6 +391,9 @@ io.on("connection", function (socket) {
     console.log('Ngắt kết nối vs ' + socket.id)
   })
 });
+
+
+
 function getRoom(ListRoom) {
   const array = []
   ListRoom.forEach(element => {
@@ -398,12 +411,14 @@ function getId(length) {
   return id;
 }
 
+
 app.get('/', (req, res) => {
   res.send('hello app heroku!')
-})
+}) // test server
+
 app.get('/getRooms', (req, res) => {
   res.send(getRoom(ListRoom))
-})
+}) // list room
 
 app.post('/getPlayer', (req, res) => {
   ListRoom.forEach((element) => {
@@ -411,9 +426,9 @@ app.post('/getPlayer', (req, res) => {
       res.send({ Players: element.Players, play: element.playing })
     }
   })
-})
+}) // request trả về thông tin của player trong phòng
+
 app.post('/sendPassword', (req, res) => {
-  console.log(req.body)
   ListRoom.forEach(element => {
     if (element.idRoom === req.body.idRoom) {
       if (element.password === req.body.password)
@@ -423,7 +438,15 @@ app.post('/sendPassword', (req, res) => {
       return;
     }
   })
-})
+}) // nhập password phòng chơi
+app.post('/sendEdit', (req, res) => {
+  const { idUser, url, userName } = req.body;
+  console.log(req.body)
+  var sql = `update user_game set url = ${url}, user_name = '${userName}' where id_user = '${idUser}'`
+  conn.query(sql, (err, data) => {
+    res.send(true)
+  })
+}) // chỉnh sửa ảnh đại diện vs name
 
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
@@ -435,18 +458,9 @@ app.post('/login', (req, res) => {
     else res.send({ login: false })
 
   })
-})
-app.post('/sendEdit', (req, res) => {
-  const { idUser, url, userName } = req.body;
-  console.log(req.body)
-  var sql = `update user_game set url = ${url}, user_name = '${userName}' where id_user = '${idUser}'`
-  console.log(sql)
-  conn.query(sql, (err, data) => {
-    res.send(true)
-  })
-})
-app.post('/signup', (req, res) => {
+}) // gửi email password để đăng nhập
 
+app.post('/signup', (req, res) => {
   const { email, password } = req.body;
   const idUser = getId(10)
   const userName = getId(8)
@@ -462,5 +476,5 @@ app.post('/signup', (req, res) => {
       })
     }
   })
-})
+}) // tạo tài khoản đăng nhập
 server.listen(process.env.PORT || 3000);

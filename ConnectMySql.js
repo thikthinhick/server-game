@@ -6,7 +6,7 @@ var conn = mysql.createConnection({
     database: 'gametalav1',
     multipleStatements: true,
     connectionLimit: 100
-});
+});   //connect mysql
 // var conn = mysql.createConnection({
 //     host: "localhost",
 //     user: 'root',
